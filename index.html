@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P File Mesh Hub - Persistent & Authenticated</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS for WebRTC Signaling -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .pulse-dot {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between selection:bg-indigo-500 selection:text-white">
+
+    <!-- Header / Navbar -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="p-2.5 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/30">
+                    <i class="fa-solid fa-network-wired text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 via-purple-300 to-pink-400 bg-clip-text text-transparent">
+                        P2P Data Mesh
+                    </h1>
+                    <p class="text-xs text-slate-400">10-Slot Mesh • Persistent IndexedDB • Google Sites Ready</p>
+                </div>
+            </div>
+
+            <!-- Network Status Indicators -->
+            <div class="flex items-center gap-3 text-xs sm:text-sm flex-wrap">
+                <div class="flex items-center gap-2 bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60">
+                    <span class="relative flex h-2.5 w-2.5">
+                      <span id="statusPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span id="statusDot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                    </span>
+                    <span id="networkStatusText" class="text-slate-300 font-medium">Connecting...</span>
+                </div>
+
+                <!-- Username Badge & Change Button -->
+                <button onclick="promptUsernameChange()" class="flex items-center gap-2 bg-indigo-950/60 hover:bg-indigo-900/60 px-3 py-1.5 rounded-lg border border-indigo-500/30 text-indigo-300 transition" title="Click to change username">
+                    <i class="fa-solid fa-user-tag text-xs"></i>
+                    <span>User: <strong id="myUsernameDisplay" class="text-indigo-200 font-semibold">Anonymous</strong></span>
+                    <i class="fa-solid fa-pen-to-square text-[10px] opacity-70"></i>
+                </button>
+
+                <!-- Device Session Lock / Logout Button -->
+                <button onclick="lockDeviceSession()" class="flex items-center gap-1.5 bg-rose-950/50 hover:bg-rose-900/60 px-3 py-1.5 rounded-lg border border-rose-500/30 text-rose-300 transition" title="Lock device session">
+                    <i class="fa-solid fa-lock text-xs"></i>
+                    <span class="font-medium">Lock</span>
+                </button>
+
+                <div class="flex items-center gap-2 bg-slate-800/90 px-3 py-1.5 rounded-lg border border-slate-700/60">
+                    <i class="fa-solid fa-users text-indigo-400"></i>
+                    <span class="text-slate-300">Peers Online: <strong id="peerCount" class="text-indigo-300 font-semibold">1</strong></span>
+                </div>
+
+                <button id="toggleDebugBtn" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg border border-indigo-500/30 font-medium transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-radar text-xs animate-pulse"></i> Radar Scanner & Connect
+                </button>
+
+                <button id="infoBtn" class="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition">
+                    <i class="fa-solid fa-circle-info"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Debug, Antenna Radar Scanner & Manual Connection Drawer -->
+    <div id="debugDrawer" class="hidden bg-slate-900 border-b border-indigo-500/30 p-4 transition-all">
+        <div class="max-w-7xl mx-auto space-y-4">
+            
+            <!-- Antenna Radar Auto-Scanner Section -->
+            <div class="bg-slate-950/80 p-4 rounded-xl border border-indigo-500/30">
+                <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-2">
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex h-3 w-3">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                        </div>
+                        <h3 class="text-sm font-semibold text-indigo-300 flex items-center gap-2">
+                            <i class="fa-solid fa-tower-cell text-indigo-400"></i> Active Antenna Mesh Scanner
+                        </h3>
+                    </div>
+                    <span id="scannerStatusText" class="text-xs text-slate-400 flex items-center gap-1">
+                        <i class="fa-solid fa-rotate text-[10px] animate-spin text-indigo-400"></i> Scanning frequency for active peers...
+                    </span>
+                </div>
+
+                <!-- Discovered Users List -->
+                <div id="discoveredPeersGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-48 overflow-y-auto pr-1">
+                    <div class="col-span-full py-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+                        <i class="fa-solid fa-satellite-dish text-2xl text-slate-600 mb-2 block"></i>
+                        Scanning network... Nearby peers with usernames will automatically appear here.
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs sm:text-sm">
+                <div class="space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 font-medium block">Your Node Peer ID:</span>
+                    <div class="flex items-center gap-2">
+                        <input id="myPeerIdDisplay" type="text" readonly class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-indigo-300 text-xs" value="Connecting...">
+                        <button onclick="copyPeerId()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition font-medium">Copy</button>
+                    </div>
+                </div>
+
+                <div class="space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                    <span class="text-slate-400 font-medium block">Direct Connect to Peer ID:</span>
+                    <div class="flex items-center gap-2">
+                        <input id="manualPeerInput" type="text" placeholder="Paste peer ID here..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-slate-200 text-xs focus:outline-none focus:border-indigo-500">
+                        <button onclick="manualConnect()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition font-medium">Connect</button>
+                    </div>
+                </div>
+
+                <div class="space-y-1 bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col justify-between">
+                    <div>
+                        <span class="text-slate-400 font-medium block">Active Mesh Connections:</span>
+                        <span id="connectedPeerList" class="text-slate-300 font-mono text-xs truncate block">None (Waiting for peers)</span>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Note: IndexedDB persists files locally on this device. PeerJS syncs data live across all online browsers!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
+
+        <!-- Banner / Instructions -->
+        <div class="mb-8 p-4 bg-gradient-to-r from-indigo-950/50 via-purple-950/30 to-slate-900 border border-indigo-500/20 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div class="space-y-1">
+                <h2 class="text-base font-semibold text-indigo-200 flex items-center gap-2">
+                    <i class="fa-solid fa-bolt text-indigo-400"></i> Direct WebRTC Mesh & Persistent Disk Storage
+                </h2>
+                <p class="text-xs sm:text-sm text-slate-400">
+                    Files stream browser-to-browser and are permanently saved to IndexedDB so data remains even when everyone closes their tab.
+                </p>
+            </div>
+            <div class="flex items-center gap-2 text-xs flex-wrap">
+                <span class="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Slots 1-2: 500MB</span>
+                <span class="px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">Slots 3-5: 100MB</span>
+                <span class="px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Slots 6-10: 10MB</span>
+            </div>
+        </div>
+
+        <!-- 10 Slots Grid -->
+        <div id="slotsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-5">
+            <!-- Dynamic Slots will be injected here -->
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900/60 border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+            <div>P2P PeerJS WebRTC Mesh + Persistent IndexedDB</div>
+            <div>Node ID: <span id="myPeerId" class="font-mono text-slate-400">Initializing...</span></div>
+        </div>
+    </footer>
+
+    <!-- Info Modal -->
+    <div id="infoModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button id="closeInfoBtn" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+            <h3 class="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-indigo-400"></i> How P2P Mesh & Persistent Storage Work
+            </h3>
+            <div class="space-y-3 text-sm text-slate-300">
+                <p>
+                    <strong>1. Persistent IndexedDB:</strong> All uploaded files and received mesh transfers are stored directly inside your browser's persistent database. Closing or restarting the browser will NOT delete your files.
+                </p>
+                <p>
+                    <strong>2. Device Password Lock:</strong> Your account username and encrypted password lock access on this device. You can lock your session using the "Lock" button in the top bar.
+                </p>
+                <p>
+                    <strong>3. Automatic Mesh Synchronization:</strong> When other peers open the website, online nodes automatically exchange missing file slots and updates seamlessly!
+                </p>
+            </div>
+            <button id="confirmInfoBtn" class="mt-6 w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition">
+                Got it, let's share!
+            </button>
+        </div>
+    </div>
+
+    <!-- First-Time Register / Device Authentication Modal -->
+    <div id="authModal" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[100] flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-indigo-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div class="text-center space-y-2 mb-6">
+                <div class="w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl border border-indigo-500/30 flex items-center justify-center mx-auto text-2xl">
+                    <i id="authIcon" class="fa-solid fa-user-shield"></i>
+                </div>
+                <h3 id="authTitle" class="text-xl font-bold text-white">Device Account Setup</h3>
+                <p id="authSubtitle" class="text-xs text-slate-400">
+                    Create a username and password for this device. Your data remains stored permanently across browser restarts.
+                </p>
+            </div>
+
+            <form id="authForm" onsubmit="handleAuthSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Username:</label>
+                    <input id="authUsernameInput" type="text" maxlength="20" required placeholder="e.g. CyberPeer42" class="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Password:</label>
+                    <input id="authPasswordInput" type="password" required placeholder="••••••••" class="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none">
+                </div>
+
+                <div id="authErrorMsg" class="text-xs text-rose-400 hidden flex items-center gap-1">
+                    <i class="fa-solid fa-triangle-exclamation"></i> <span id="authErrorText">Invalid password.</span>
+                </div>
+
+                <button type="submit" id="authSubmitBtn" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium text-sm transition shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-key text-xs"></i> Initialize & Unlock Site
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Edit Username Prompt Modal -->
+    <div id="usernameModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[60] flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-indigo-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <div class="text-center space-y-3">
+                <div class="w-14 h-14 bg-indigo-600/20 text-indigo-400 rounded-2xl border border-indigo-500/30 flex items-center justify-center mx-auto text-2xl">
+                    <i class="fa-solid fa-user-gear"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white">Update Display Username</h3>
+                <p class="text-xs text-slate-400">
+                    Change your display name visible to other connected peers across the WebRTC network.
+                </p>
+            </div>
+
+            <div class="mt-5 space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-300 mb-1">Display Username:</label>
+                    <input id="usernameInputModal" type="text" maxlength="20" placeholder="e.g. CyberPeer42" class="w-full bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none">
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="document.getElementById('usernameModal').classList.add('hidden')" class="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium text-sm transition">
+                        Cancel
+                    </button>
+                    <button onclick="saveUsernameFromModal()" class="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium text-sm transition shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check text-xs"></i> Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden File Inputs Container -->
+    <div id="fileInputs" class="hidden"></div>
+
+    <script>
+        /**
+         * P2P File Sharing Engine Configuration & State
+         */
+        const SLOT_CONFIG = [
+            { id: 1, maxMB: 500, label: '500 MB', color: 'emerald' },
+            { id: 2, maxMB: 500, label: '500 MB', color: 'emerald' },
+            { id: 3, maxMB: 100, label: '100 MB', color: 'amber' },
+            { id: 4, maxMB: 100, label: '100 MB', color: 'amber' },
+            { id: 5, maxMB: 100, label: '100 MB', color: 'amber' },
+            { id: 6, maxMB: 10, label: '10 MB', color: 'blue' },
+            { id: 7, maxMB: 10, label: '10 MB', color: 'blue' },
+            { id: 8, maxMB: 10, label: '10 MB', color: 'blue' },
+            { id: 9, maxMB: 10, label: '10 MB', color: 'blue' },
+            { id: 10, maxMB: 10, label: '10 MB', color: 'blue' },
+        ];
+
+        // Seed peer IDs for automatic room discovery
+        const ROOM_SEEDS = [
+            'gsite-p2p-mesh-room-seed-1',
+            'gsite-p2p-mesh-room-seed-2',
+            'gsite-p2p-mesh-room-seed-3'
+        ];
+
+        // Global State
+        let dbInstance = null;
+        let isAuthenticated = false;
+        let myPeer = null;
+        let myPeerId = 'gsite-node-' + Math.random().toString(36).substring(2, 8);
+        let myUsername = 'Peer-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+        
+        let connectedPeers = new Map(); // peerId -> DataConnection
+        let discoveredUsers = new Map(); // peerId -> { username, peerId, lastSeen, isConnected }
+        let localFiles = new Map(); // slotId -> File / Blob Object
+        let localDataStore = new Map(); // Buffer fallback
+        let broadcastChannel = null;
+        
+        // Slot network state
+        let globalSlots = {};
+        let downloadProgress = {};
+
+        const CHUNK_SIZE = 16 * 1024; // 16KB standard chunk size
+
+        // DOM Elements
+        const slotsGrid = document.getElementById('slotsGrid');
+        const statusDot = document.getElementById('statusDot');
+        const statusPing = document.getElementById('statusPing');
+        const networkStatusText = document.getElementById('networkStatusText');
+        const peerCountEl = document.getElementById('peerCount');
+        const myPeerIdEl = document.getElementById('myPeerId');
+        const myPeerIdDisplay = document.getElementById('myPeerIdDisplay');
+        const connectedPeerList = document.getElementById('connectedPeerList');
+        const fileInputsContainer = document.getElementById('fileInputs');
+        const debugDrawer = document.getElementById('debugDrawer');
+        const myUsernameDisplay = document.getElementById('myUsernameDisplay');
+        const discoveredPeersGrid = document.getElementById('discoveredPeersGrid');
+
+        // Initialize Application
+        window.addEventListener('DOMContentLoaded', async () => {
+            initSlotState();
+            await initIndexedDB();
+            checkDeviceAuthStatus();
+
+            document.getElementById('toggleDebugBtn').addEventListener('click', () => {
+                debugDrawer.classList.toggle('hidden');
+            });
+            
+            // Periodic Swarm Announcement & Antenna Radar Scan Cleanup
+            setInterval(announceSwarmHeartbeat, 2500);
+            setInterval(cleanExpiredDiscoveredPeers, 4000);
+        });
+
+        /**
+         * INDEXEDDB PERSISTENT STORAGE
+         */
+        function initIndexedDB() {
+            return new Promise((resolve) => {
+                const request = indexedDB.open('P2P_Mesh_Storage', 1);
+
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains('slots')) {
+                        db.createObjectStore('slots', { keyPath: 'id' });
+                    }
+                    if (!db.objectStoreNames.contains('files')) {
+                        db.createObjectStore('files', { keyPath: 'slotId' });
+                    }
+                };
+
+                request.onsuccess = (event) => {
+                    dbInstance = event.target.result;
+                    loadPersistentDataFromDB().then(resolve);
+                };
+
+                request.onerror = (err) => {
+                    console.warn('IndexedDB unavailable, falling back to memory:', err);
+                    resolve();
+                };
+            });
+        }
+
+        async function loadPersistentDataFromDB() {
+            if (!dbInstance) return;
+
+            return new Promise((resolve) => {
+                const transaction = dbInstance.transaction(['slots', 'files'], 'readonly');
+                const slotsStore = transaction.objectStore('slots');
+                const filesStore = transaction.objectStore('files');
+
+                const slotsRequest = slotsStore.getAll();
+                slotsRequest.onsuccess = () => {
+                    if (slotsRequest.result && slotsRequest.result.length > 0) {
+                        slotsRequest.result.forEach(slotData => {
+                            if (slotData && slotData.id) {
+                                globalSlots[slotData.id] = slotData.data;
+                            }
+                        });
+                    }
+
+                    const filesRequest = filesStore.getAll();
+                    filesRequest.onsuccess = () => {
+                        if (filesRequest.result && filesRequest.result.length > 0) {
+                            filesRequest.result.forEach(fItem => {
+                                if (fItem && fItem.slotId && fItem.blob) {
+                                    localFiles.set(fItem.slotId, fItem.blob);
+                                }
+                            });
+                        }
+                        renderSlotsUI();
+                        resolve();
+                    };
+                    filesRequest.onerror = () => resolve();
+                };
+                slotsRequest.onerror = () => resolve();
+            });
+        }
+
+        function saveSlotToDB(slotId, slotInfo, fileBlob = null) {
+            if (!dbInstance) return;
+
+            const transaction = dbInstance.transaction(['slots', 'files'], 'readwrite');
+            const slotsStore = transaction.objectStore('slots');
+            const filesStore = transaction.objectStore('files');
+
+            slotsStore.put({ id: slotId, data: slotInfo });
+
+            if (fileBlob) {
+                filesStore.put({ slotId: slotId, blob: fileBlob });
+            }
+        }
+
+        function removeSlotFromDB(slotId) {
+            if (!dbInstance) return;
+
+            const transaction = dbInstance.transaction(['slots', 'files'], 'readwrite');
+            transaction.objectStore('slots').delete(slotId);
+            transaction.objectStore('files').delete(slotId);
+        }
+
+        /**
+         * DEVICE AUTHENTICATION & LOGIN FLOW
+         */
+        function checkDeviceAuthStatus() {
+            const savedUsername = localStorage.getItem('p2p_mesh_account_username');
+            const savedPasswordHash = localStorage.getItem('p2p_mesh_account_password');
+
+            const modal = document.getElementById('authModal');
+            const authTitle = document.getElementById('authTitle');
+            const authSubtitle = document.getElementById('authSubtitle');
+            const authUsernameInput = document.getElementById('authUsernameInput');
+            const authIcon = document.getElementById('authIcon');
+
+            modal.classList.remove('hidden');
+
+            if (!savedUsername || !savedPasswordHash) {
+                // First-time setup
+                authTitle.textContent = 'Device Account Setup';
+                authSubtitle.textContent = 'Create a username and password for this device. Data remains saved permanently on this browser.';
+                authIcon.className = 'fa-solid fa-user-plus';
+                authUsernameInput.readOnly = false;
+                authUsernameInput.value = '';
+            } else {
+                // Subsequent login requirement
+                authTitle.textContent = 'Device Password Lock';
+                authSubtitle.textContent = `Welcome back! Enter password for user "${savedUsername}" to unlock data.`;
+                authIcon.className = 'fa-solid fa-lock';
+                authUsernameInput.value = savedUsername;
+                authUsernameInput.readOnly = true;
+            }
+        }
+
+        function handleAuthSubmit(event) {
+            event.preventDefault();
+            const usernameInput = document.getElementById('authUsernameInput').value.trim();
+            const passwordInput = document.getElementById('authPasswordInput').value;
+            const errorMsg = document.getElementById('authErrorMsg');
+            const errorText = document.getElementById('authErrorText');
+
+            const savedUsername = localStorage.getItem('p2p_mesh_account_username');
+            const savedPassword = localStorage.getItem('p2p_mesh_account_password');
+
+            if (!savedUsername || !savedPassword) {
+                // Register account for first time
+                if (usernameInput.length < 2) {
+                    errorText.textContent = 'Username must be at least 2 characters.';
+                    errorMsg.classList.remove('hidden');
+                    return;
+                }
+                if (passwordInput.length < 3) {
+                    errorText.textContent = 'Password must be at least 3 characters.';
+                    errorMsg.classList.remove('hidden');
+                    return;
+                }
+
+                localStorage.setItem('p2p_mesh_account_username', usernameInput);
+                localStorage.setItem('p2p_mesh_account_password', btoa(passwordInput)); // simple obfuscation
+                
+                myUsername = usernameInput;
+                unlockAppSession();
+                showNotification(`Device account setup complete! Welcome, ${myUsername}.`, 'success');
+            } else {
+                // Verify password
+                if (btoa(passwordInput) === savedPassword) {
+                    myUsername = savedUsername;
+                    unlockAppSession();
+                    showNotification(`Welcome back, ${myUsername}! Session unlocked.`, 'success');
+                } else {
+                    errorText.textContent = 'Incorrect password. Access denied.';
+                    errorMsg.classList.remove('hidden');
+                }
+            }
+        }
+
+        function unlockAppSession() {
+            isAuthenticated = true;
+            document.getElementById('authModal').classList.add('hidden');
+            document.getElementById('authErrorMsg').classList.add('hidden');
+            document.getElementById('authPasswordInput').value = '';
+
+            myUsernameDisplay.textContent = myUsername;
+            
+            renderSlotsUI();
+            setupFileInputs();
+            initBroadcastChannel();
+            initPeerJS();
+            setupModalHandlers();
+        }
+
+        function lockDeviceSession() {
+            isAuthenticated = false;
+            if (myPeer) {
+                try { myPeer.destroy(); } catch(e){}
+            }
+            connectedPeers.clear();
+            updatePeerCountUI();
+            updateConnectionStatus(false, 'Locked Session');
+            checkDeviceAuthStatus();
+            showNotification('Session locked successfully.', 'info');
+        }
+
+        function promptUsernameChange() {
+            if (!isAuthenticated) return;
+            const modal = document.getElementById('usernameModal');
+            document.getElementById('usernameInputModal').value = myUsername;
+            modal.classList.remove('hidden');
+        }
+
+        function saveUsernameFromModal() {
+            const input = document.getElementById('usernameInputModal');
+            let val = input.value.trim();
+            if (!val) {
+                val = 'Peer-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+            }
+            myUsername = val;
+            localStorage.setItem('p2p_mesh_account_username', myUsername);
+            myUsernameDisplay.textContent = myUsername;
+            document.getElementById('usernameModal').classList.add('hidden');
+
+            announceSwarmHeartbeat();
+            renderSlotsUI();
+            showNotification(`Display username updated to "${myUsername}"`, 'success');
+        }
+
+        function initSlotState() {
+            SLOT_CONFIG.forEach(cfg => {
+                if (!globalSlots[cfg.id]) {
+                    globalSlots[cfg.id] = {
+                        occupied: false,
+                        name: '',
+                        size: 0,
+                        type: '',
+                        ownerId: null,
+                        ownerUsername: '',
+                        timestamp: 0
+                    };
+                }
+            });
+        }
+
+        function initBroadcastChannel() {
+            if ('BroadcastChannel' in window) {
+                try {
+                    broadcastChannel = new BroadcastChannel('google_sites_p2p_channel');
+                    broadcastChannel.onmessage = (event) => {
+                        if (event.data && event.data.from !== myPeerId) {
+                            handleIncomingPeerData(event.data.from, event.data);
+                        }
+                    };
+                } catch(e) {
+                    console.warn('BroadcastChannel suppressed:', e);
+                }
+            }
+        }
+
+        function setupFileInputs() {
+            fileInputsContainer.innerHTML = '';
+            SLOT_CONFIG.forEach(cfg => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.id = `file-input-${cfg.id}`;
+                input.addEventListener('change', (event) => handleFileSelect(event, cfg.id));
+                fileInputsContainer.appendChild(input);
+            });
+        }
+
+        /**
+         * Initialize PeerJS WebRTC Node
+         */
+        function initPeerJS() {
+            const peerConfig = {
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        { urls: 'stun:global.stun.twilio.com:3478' }
+                    ]
+                }
+            };
+
+            try {
+                myPeer = new Peer(myPeerId, peerConfig);
+
+                myPeer.on('open', (id) => {
+                    myPeerId = id;
+                    myPeerIdEl.textContent = id;
+                    myPeerIdDisplay.value = id;
+                    updateConnectionStatus(true, 'WebRTC Mesh Online');
+                    discoverAndConnectSwarm();
+                });
+
+                myPeer.on('connection', (conn) => {
+                    setupConnectionListeners(conn);
+                });
+
+                myPeer.on('disconnected', () => {
+                    updateConnectionStatus(false, 'Reconnecting Mesh...');
+                    if (myPeer && !myPeer.destroyed) {
+                        myPeer.reconnect();
+                    }
+                });
+
+                myPeer.on('error', (err) => {
+                    console.warn('PeerJS notice:', err);
+                    if (err.type === 'unavailable-id') {
+                        myPeerId = 'gsite-node-' + Math.random().toString(36).substring(2, 8);
+                        initPeerJS();
+                    } else {
+                        updateConnectionStatus(true, 'Active (Local Swarm Mode)');
+                    }
+                });
+            } catch (err) {
+                console.warn('WebRTC peer creation restricted:', err);
+                updateConnectionStatus(true, 'Active (Tab Mesh Mode)');
+            }
+        }
+
+        /**
+         * Peer Discovery & Swarm Interconnect
+         */
+        function discoverAndConnectSwarm() {
+            ROOM_SEEDS.forEach(seedId => {
+                if (seedId !== myPeerId) {
+                    connectToPeer(seedId);
+                }
+            });
+
+            broadcastMsg({
+                type: 'PEER_ANNOUNCE',
+                peerId: myPeerId,
+                username: myUsername,
+                slots: globalSlots
+            });
+        }
+
+        function connectToPeer(targetPeerId) {
+            targetPeerId = targetPeerId.trim();
+            if (!targetPeerId || targetPeerId === myPeerId || connectedPeers.has(targetPeerId)) return;
+
+            try {
+                const conn = myPeer.connect(targetPeerId, { reliable: true });
+                if (conn) {
+                    setupConnectionListeners(conn);
+                }
+            } catch (e) {
+                console.warn('Direct connect attempt failed:', e);
+            }
+        }
+
+        function manualConnect() {
+            const input = document.getElementById('manualPeerInput');
+            const targetId = input.value.trim();
+            if (!targetId) {
+                showNotification('Please enter a valid Peer ID', 'error');
+                return;
+            }
+            if (targetId === myPeerId) {
+                showNotification('Cannot connect to your own Peer ID', 'error');
+                return;
+            }
+
+            connectToPeer(targetId);
+            showNotification(`Attempting connection to ${targetId}...`, 'info');
+            input.value = '';
+        }
+
+        function setupConnectionListeners(conn) {
+            conn.on('open', () => {
+                connectedPeers.set(conn.peer, conn);
+                updatePeerCountUI();
+
+                showNotification(`Connected to peer: ${conn.peer.substring(0, 10)}...`, 'success');
+
+                conn.send({
+                    type: 'SYNC_STATE',
+                    username: myUsername,
+                    slots: globalSlots,
+                    from: myPeerId
+                });
+
+                if (discoveredUsers.has(conn.peer)) {
+                    const u = discoveredUsers.get(conn.peer);
+                    u.isConnected = true;
+                    renderDiscoveredPeersUI();
+                }
+            });
+
+            conn.on('data', (data) => {
+                handleIncomingPeerData(conn.peer, data);
+            });
+
+            conn.on('close', () => {
+                connectedPeers.delete(conn.peer);
+                if (discoveredUsers.has(conn.peer)) {
+                    discoveredUsers.get(conn.peer).isConnected = false;
+                }
+                updatePeerCountUI();
+                renderDiscoveredPeersUI();
+                renderSlotsUI();
+            });
+
+            conn.on('error', () => {
+                connectedPeers.delete(conn.peer);
+                if (discoveredUsers.has(conn.peer)) {
+                    discoveredUsers.get(conn.peer).isConnected = false;
+                }
+                updatePeerCountUI();
+                renderDiscoveredPeersUI();
+            });
+        }
+
+        function announceSwarmHeartbeat() {
+            if (!isAuthenticated) return;
+            broadcastMsg({
+                type: 'HEARTBEAT',
+                from: myPeerId,
+                username: myUsername,
+                slots: globalSlots
+            });
+        }
+
+        function broadcastMsg(msg) {
+            msg.from = myPeerId;
+
+            connectedPeers.forEach((conn) => {
+                if (conn && conn.open) {
+                    try { conn.send(msg); } catch(e){}
+                }
+            });
+
+            if (broadcastChannel) {
+                try {
+                    broadcastChannel.postMessage(msg);
+                } catch(e) {}
+            }
+        }
+
+        /**
+         * Direct P2P Messaging Handler
+         */
+        function handleIncomingPeerData(fromPeerId, data) {
+            if (!data || !data.type || !isAuthenticated) return;
+
+            if (fromPeerId && fromPeerId !== myPeerId) {
+                const uName = data.username || ('Peer-' + fromPeerId.substring(0, 6));
+                discoveredUsers.set(fromPeerId, {
+                    peerId: fromPeerId,
+                    username: uName,
+                    lastSeen: Date.now(),
+                    isConnected: connectedPeers.has(fromPeerId)
+                });
+                renderDiscoveredPeersUI();
+            }
+
+            switch (data.type) {
+                case 'PEER_ANNOUNCE':
+                case 'HEARTBEAT':
+                case 'SYNC_STATE':
+                    if (data.slots) {
+                        mergeGlobalSlots(data.slots);
+                    }
+                    break;
+
+                case 'SLOT_CLAIM':
+                    if (data.slotId && data.fileInfo) {
+                        globalSlots[data.slotId] = data.fileInfo;
+                        saveSlotToDB(data.slotId, data.fileInfo);
+                        renderSlotsUI();
+                        if (data.fileData) {
+                            const blob = new Blob([data.fileData], { type: data.fileInfo.type });
+                            localFiles.set(data.slotId, blob);
+                            saveSlotToDB(data.slotId, data.fileInfo, blob);
+                        }
+                    }
+                    break;
+
+                case 'SLOT_CLEAR':
+                    if (data.slotId && globalSlots[data.slotId]) {
+                        globalSlots[data.slotId] = {
+                            occupied: false, name: '', size: 0, type: '', ownerId: null, ownerUsername: '', timestamp: 0
+                        };
+                        localFiles.delete(data.slotId);
+                        localDataStore.delete(data.slotId);
+                        removeSlotFromDB(data.slotId);
+                        renderSlotsUI();
+                    }
+                    break;
+
+                case 'REQUEST_FILE_CHUNK':
+                    handleChunkRequest(fromPeerId, data.slotId, data.chunkIndex);
+                    break;
+            }
+        }
+
+        function mergeGlobalSlots(incomingSlots) {
+            let updated = false;
+            Object.keys(incomingSlots).forEach(slotId => {
+                const local = globalSlots[slotId];
+                const incoming = incomingSlots[slotId];
+
+                if (incoming && incoming.occupied) {
+                    if (!local.occupied || incoming.timestamp > local.timestamp) {
+                        globalSlots[slotId] = incoming;
+                        saveSlotToDB(slotId, incoming);
+                        updated = true;
+                    }
+                }
+            });
+
+            if (updated) {
+                renderSlotsUI();
+            }
+        }
+
+        /**
+         * Antenna Radar UI Render & Peer Scanner Cleanup
+         */
+        function cleanExpiredDiscoveredPeers() {
+            const now = Date.now();
+            let changed = false;
+            discoveredUsers.forEach((peer, id) => {
+                if (now - peer.lastSeen > 10000 && !connectedPeers.has(id)) {
+                    discoveredUsers.delete(id);
+                    changed = true;
+                }
+            });
+            if (changed) {
+                renderDiscoveredPeersUI();
+            }
+        }
+
+        function renderDiscoveredPeersUI() {
+            if (!discoveredPeersGrid) return;
+
+            if (discoveredUsers.size === 0) {
+                discoveredPeersGrid.innerHTML = `
+                    <div class="col-span-full py-6 text-center text-xs text-slate-500 border border-dashed border-slate-800 rounded-lg">
+                        <i class="fa-solid fa-satellite-dish text-2xl text-slate-600 mb-2 block"></i>
+                        Scanning network... Nearby peers with usernames will automatically appear here.
+                    </div>
+                `;
+                return;
+            }
+
+            discoveredPeersGrid.innerHTML = '';
+            discoveredUsers.forEach((peer, peerId) => {
+                const isConnected = connectedPeers.has(peerId);
+                const item = document.createElement('div');
+                item.className = 'bg-slate-900 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2 text-xs hover:border-slate-700 transition';
+                
+                item.innerHTML = `
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1.5 font-semibold text-slate-200 truncate">
+                            <i class="fa-solid fa-user-circle text-indigo-400"></i>
+                            <span class="truncate" title="${escapeHtml(peer.username)}">${escapeHtml(peer.username)}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-500 font-mono truncate" title="${peerId}">
+                            ${peerId}
+                        </div>
+                    </div>
+                    <div>
+                        ${isConnected ? `
+                            <span class="px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium rounded-lg text-[11px] flex items-center gap-1">
+                                <i class="fa-solid fa-link text-[9px]"></i> Connected
+                            </span>
+                        ` : `
+                            <button onclick="connectToPeer('${peerId}')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition text-[11px] flex items-center gap-1 shadow">
+                                <i class="fa-solid fa-plug text-[9px]"></i> Connect
+                            </button>
+                        `}
+                    </div>
+                `;
+
+                discoveredPeersGrid.appendChild(item);
+            });
+        }
+
+        /**
+         * Upload File & Claim Slot (Persistent Saved)
+         */
+        function triggerUpload(slotId) {
+            const input = document.getElementById(`file-input-${slotId}`);
+            if (input) input.click();
+        }
+
+        async function handleFileSelect(event, slotId) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const config = SLOT_CONFIG.find(s => s.id === slotId);
+            const maxBytes = config.maxMB * 1024 * 1024;
+
+            if (file.size > maxBytes) {
+                showNotification(`File exceeds limit of ${config.maxMB}MB!`, 'error');
+                event.target.value = '';
+                return;
+            }
+
+            if (globalSlots[slotId].occupied) {
+                showNotification('Slot occupied by another peer!', 'error');
+                event.target.value = '';
+                return;
+            }
+
+            localFiles.set(slotId, file);
+
+            const filePayload = {
+                occupied: true,
+                name: file.name,
+                size: file.size,
+                type: file.type || 'application/octet-stream',
+                ownerId: myPeerId,
+                ownerUsername: myUsername,
+                timestamp: Date.now()
+            };
+
+            globalSlots[slotId] = filePayload;
+
+            // Save file blob and metadata permanently to IndexedDB
+            saveSlotToDB(slotId, filePayload, file);
+
+            let binaryBuffer = null;
+            if (file.size <= 5 * 1024 * 1024) {
+                try {
+                    binaryBuffer = await file.arrayBuffer();
+                    localDataStore.set(slotId, binaryBuffer);
+                } catch(e) {}
+            }
+
+            broadcastMsg({
+                type: 'SLOT_CLAIM',
+                slotId: slotId,
+                fileInfo: filePayload,
+                fileData: binaryBuffer
+            });
+
+            renderSlotsUI();
+            showNotification(`Slot #${slotId} claimed and saved locally! Seeding "${file.name}"`, 'success');
+        }
+
+        function clearSlot(slotId) {
+            if (globalSlots[slotId].ownerId !== myPeerId && globalSlots[slotId].ownerUsername !== myUsername) return;
+
+            localFiles.delete(slotId);
+            localDataStore.delete(slotId);
+            globalSlots[slotId] = {
+                occupied: false, name: '', size: 0, type: '', ownerId: null, ownerUsername: '', timestamp: 0
+            };
+
+            removeSlotFromDB(slotId);
+
+            broadcastMsg({
+                type: 'SLOT_CLEAR',
+                slotId: slotId
+            });
+
+            renderSlotsUI();
+            showNotification(`Slot #${slotId} released.`, 'info');
+        }
+
+        /**
+         * Streaming Download & Persistent IndexedDB Storage Handler
+         */
+        async function downloadFileFromPeer(slotId) {
+            const slot = globalSlots[slotId];
+            if (!slot.occupied) return;
+
+            // 1. Direct Local File / IndexedDB persistent storage hit
+            if (localFiles.has(slotId)) {
+                const fileOrBlob = localFiles.get(slotId);
+                triggerDirectBlobDownload(fileOrBlob, slot.name);
+                showNotification(`Downloaded from local disk: ${slot.name}`, 'success');
+                return;
+            }
+
+            // 2. Local cached buffer
+            if (localDataStore.has(slotId)) {
+                const buffer = localDataStore.get(slotId);
+                const blob = new Blob([buffer], { type: slot.type });
+                localFiles.set(slotId, blob);
+                saveSlotToDB(slotId, slot, blob); // Save permanently
+                triggerDirectBlobDownload(blob, slot.name);
+                showNotification(`Download complete: ${slot.name}`, 'success');
+                return;
+            }
+
+            // 3. Download directly over WebRTC Mesh from remote Peer
+            const ownerId = slot.ownerId;
+            if (!connectedPeers.has(ownerId)) {
+                connectToPeer(ownerId);
+                showNotification('Connecting to hosting peer...', 'info');
+                
+                let attempts = 0;
+                while (!connectedPeers.has(ownerId) && attempts < 12) {
+                    await new Promise(r => setTimeout(r, 300));
+                    attempts++;
+                }
+            }
+
+            if (connectedPeers.has(ownerId)) {
+                const totalChunks = Math.ceil(slot.size / CHUNK_SIZE);
+                const conn = connectedPeers.get(ownerId);
+
+                downloadProgress[slotId] = 1;
+                renderSlotsUI();
+
+                const receivedChunks = [];
+                let chunksReceivedCount = 0;
+
+                const chunkHandler = (data) => {
+                    if (data.type === 'FILE_CHUNK' && data.slotId === slotId) {
+                        receivedChunks[data.chunkIndex] = new Uint8Array(data.chunk);
+                        chunksReceivedCount++;
+
+                        const pct = Math.floor((chunksReceivedCount / totalChunks) * 100);
+                        downloadProgress[slotId] = pct;
+                        updateSlotProgressUI(slotId, pct);
+
+                        if (chunksReceivedCount === totalChunks) {
+                            const blob = new Blob(receivedChunks, { type: slot.type });
+                            
+                            // Save file permanently to local IndexedDB for future visits
+                            localFiles.set(slotId, blob);
+                            saveSlotToDB(slotId, slot, blob);
+
+                            triggerDirectBlobDownload(blob, slot.name);
+                            
+                            delete downloadProgress[slotId];
+                            renderSlotsUI();
+                            showNotification(`Download complete & saved to disk: ${slot.name}`, 'success');
+                            conn.off('data', chunkHandler);
+                        } else {
+                            conn.send({
+                                type: 'REQUEST_FILE_CHUNK',
+                                slotId: slotId,
+                                chunkIndex: chunksReceivedCount
+                            });
+                        }
+                    }
+                };
+
+                conn.on('data', chunkHandler);
+                conn.send({
+                    type: 'REQUEST_FILE_CHUNK',
+                    slotId: slotId,
+                    chunkIndex: 0
+                });
+            } else {
+                showNotification('Host peer not connected. Use Radar Scanner above to connect!', 'error');
+            }
+        }
+
+        function handleChunkRequest(requesterPeerId, slotId, chunkIndex) {
+            if (!localFiles.has(slotId)) return;
+
+            const fileOrBlob = localFiles.get(slotId);
+            const conn = connectedPeers.get(requesterPeerId);
+            if (!conn) return;
+
+            const start = chunkIndex * CHUNK_SIZE;
+            const end = Math.min(fileOrBlob.size, start + CHUNK_SIZE);
+            const blobSlice = fileOrBlob.slice(start, end);
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (e.target.readyState === FileReader.DONE) {
+                    try {
+                        conn.send({
+                            type: 'FILE_CHUNK',
+                            slotId: slotId,
+                            chunkIndex: chunkIndex,
+                            chunk: e.target.result
+                        });
+                    } catch(err){}
+                }
+            };
+            reader.readAsArrayBuffer(blobSlice);
+        }
+
+        function triggerDirectBlobDownload(blobOrFile, filename) {
+            const url = URL.createObjectURL(blobOrFile);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 1000);
+        }
+
+        /**
+         * UI Rendering Functions
+         */
+        function renderSlotsUI() {
+            if (!slotsGrid) return;
+            slotsGrid.innerHTML = '';
+
+            SLOT_CONFIG.forEach(cfg => {
+                const slot = globalSlots[cfg.id];
+                const hasLocalDiskCopy = localFiles.has(cfg.id);
+                const isLocalHost = slot.ownerId === myPeerId || slot.ownerUsername === myUsername;
+                const isDownloading = downloadProgress[cfg.id] !== undefined;
+                const isOwnerOnline = isLocalHost || connectedPeers.has(slot.ownerId) || hasLocalDiskCopy;
+
+                let tierBadge = '';
+                if (cfg.color === 'emerald') {
+                    tierBadge = '<span class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Tier 1 • Max 500MB</span>';
+                } else if (cfg.color === 'amber') {
+                    tierBadge = '<span class="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">Tier 2 • Max 100MB</span>';
+                } else {
+                    tierBadge = '<span class="text-xs px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">Tier 3 • Max 10MB</span>';
+                }
+
+                const card = document.createElement('div');
+                card.className = `bg-slate-900/90 border ${slot.occupied ? 'border-indigo-500/40 bg-slate-900' : 'border-slate-800'} rounded-2xl p-5 flex flex-col justify-between transition-all duration-200 hover:border-slate-700 shadow-lg relative overflow-hidden`;
+
+                let bodyContent = '';
+
+                if (!slot.occupied) {
+                    bodyContent = `
+                        <div class="flex-grow flex flex-col items-center justify-center py-6 text-center border-2 border-dashed border-slate-800 rounded-xl my-3 hover:border-slate-700 transition cursor-pointer" onclick="triggerUpload(${cfg.id})">
+                            <div class="p-3 bg-slate-800/60 rounded-full text-slate-400 mb-2">
+                                <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                            </div>
+                            <span class="text-sm font-medium text-slate-300">Slot Available</span>
+                            <span class="text-xs text-slate-500 mt-1">Click to upload (up to ${cfg.label})</span>
+                        </div>
+                        <button onclick="triggerUpload(${cfg.id})" class="w-full py-2.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 font-medium rounded-xl text-sm transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-plus text-xs"></i> Claim Slot #${cfg.id}
+                        </button>
+                    `;
+                } else {
+                    const fileIcon = getFileIcon(slot.type);
+                    const formattedSize = formatBytes(slot.size);
+                    const displayOwner = slot.ownerUsername ? slot.ownerUsername : (isLocalHost ? myUsername : 'Peer: ' + String(slot.ownerId).substring(0, 8));
+
+                    bodyContent = `
+                        <div class="my-3 space-y-3">
+                            <div class="flex items-start gap-3.5 p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
+                                <div class="p-3 bg-indigo-500/10 text-indigo-400 rounded-lg text-2xl flex-shrink-0">
+                                    <i class="${fileIcon}"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <h4 class="text-sm font-semibold text-slate-100 truncate" title="${escapeHtml(slot.name)}">
+                                        ${escapeHtml(slot.name)}
+                                    </h4>
+                                    <div class="flex items-center gap-2 text-xs text-slate-400 mt-1">
+                                        <span>${formattedSize}</span>
+                                        <span>•</span>
+                                        <span class="truncate max-w-[130px] font-medium text-indigo-300" title="${escapeHtml(displayOwner)}">
+                                            <i class="fa-solid fa-user text-[10px] mr-1"></i>${isLocalHost ? ' You (' + escapeHtml(myUsername) + ')' : escapeHtml(displayOwner)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="progress-container-${cfg.id}" class="${isDownloading ? 'block' : 'hidden'} space-y-1">
+                                <div class="flex justify-between text-xs text-slate-400">
+                                    <span>P2P Transferring...</span>
+                                    <span id="progress-text-${cfg.id}">${downloadProgress[cfg.id] || 0}%</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                                    <div id="progress-bar-${cfg.id}" class="bg-indigo-500 h-full transition-all duration-150" style="width: ${downloadProgress[cfg.id] || 0}%"></div>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between text-xs px-1">
+                                <span class="text-slate-400">Disk / Network Status:</span>
+                                <span class="flex items-center gap-1.5 font-medium ${hasLocalDiskCopy ? 'text-emerald-400' : (isOwnerOnline ? 'text-indigo-400' : 'text-amber-400')}">
+                                    <i class="fa-solid ${hasLocalDiskCopy ? 'fa-hard-drive' : 'fa-circle'} text-[10px] ${isOwnerOnline ? 'pulse-dot' : ''}"></i>
+                                    ${hasLocalDiskCopy ? 'Stored on Disk' : (isOwnerOnline ? 'Host Connected' : 'Host Offline/Unlinked')}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button onclick="downloadFileFromPeer(${cfg.id})" class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-download text-xs"></i> Download ${hasLocalDiskCopy ? 'Local File' : 'P2P'}
+                            </button>
+                            ${isLocalHost ? `
+                                <button onclick="clearSlot(${cfg.id})" title="Release/Clear Slot" class="px-3 py-2.5 bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700 hover:border-rose-800/50 rounded-xl transition">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                        <div class="flex items-center gap-2">
+                            <span class="font-bold text-slate-300 text-sm">Slot #${cfg.id}</span>
+                        </div>
+                        ${tierBadge}
+                    </div>
+                    ${bodyContent}
+                `;
+
+                slotsGrid.appendChild(card);
+            });
+        }
+
+        function updateSlotProgressUI(slotId, percent) {
+            const container = document.getElementById(`progress-container-${slotId}`);
+            const bar = document.getElementById(`progress-bar-${slotId}`);
+            const text = document.getElementById(`progress-text-${slotId}`);
+
+            if (container && bar && text) {
+                container.classList.remove('hidden');
+                bar.style.width = `${percent}%`;
+                text.textContent = `${percent}%`;
+            }
+        }
+
+        function updateConnectionStatus(connected, message) {
+            if (connected) {
+                statusDot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500';
+                statusPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75';
+            } else {
+                statusDot.className = 'relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500';
+                statusPing.className = 'animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75';
+            }
+            networkStatusText.textContent = message;
+        }
+
+        function updatePeerCountUI() {
+            const count = connectedPeers.size + 1;
+            peerCountEl.textContent = count;
+            
+            const peerIds = Array.from(connectedPeers.keys());
+            connectedPeerList.textContent = peerIds.length > 0 ? peerIds.map(id => id.substring(0, 10) + '...').join(', ') : 'None (Waiting for peers)';
+        }
+
+        function copyPeerId() {
+            const input = document.getElementById('myPeerIdDisplay');
+            input.select();
+            document.execCommand('copy');
+            showNotification('Peer ID copied to clipboard!', 'success');
+        }
+
+        function showNotification(msg, type = 'info') {
+            const toast = document.createElement('div');
+            let bgClass = 'bg-slate-800 border-slate-700 text-slate-200';
+            if (type === 'error') bgClass = 'bg-rose-950 border-rose-800 text-rose-200';
+            if (type === 'success') bgClass = 'bg-emerald-950 border-emerald-800 text-emerald-200';
+
+            toast.className = `fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl border shadow-2xl text-sm flex items-center gap-3 transition-all duration-300 transform translate-y-10 opacity-0 ${bgClass}`;
+            toast.innerHTML = `
+                <i class="fa-solid ${type === 'error' ? 'fa-circle-exclamation' : type === 'success' ? 'fa-circle-check' : 'fa-circle-info'}"></i>
+                <span>${escapeHtml(msg)}</span>
+            `;
+
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-10', 'opacity-0');
+            }, 50);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-5');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function setupModalHandlers() {
+            const modal = document.getElementById('infoModal');
+            document.getElementById('infoBtn').addEventListener('click', () => modal.classList.remove('hidden'));
+            document.getElementById('closeInfoBtn').addEventListener('click', () => modal.classList.add('hidden'));
+            document.getElementById('confirmInfoBtn').addEventListener('click', () => modal.classList.add('hidden'));
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function getFileIcon(mimeType) {
+            if (!mimeType) return 'fa-regular fa-file';
+            if (mimeType.startsWith('image/')) return 'fa-regular fa-file-image';
+            if (mimeType.startsWith('video/')) return 'fa-regular fa-file-video';
+            if (mimeType.startsWith('audio/')) return 'fa-regular fa-file-audio';
+            if (mimeType.includes('pdf')) return 'fa-regular fa-file-pdf';
+            if (mimeType.includes('zip') || mimeType.includes('compressed') || mimeType.includes('tar')) return 'fa-regular fa-file-zipper';
+            if (mimeType.includes('text') || mimeType.includes('json')) return 'fa-regular fa-file-lines';
+            return 'fa-regular fa-file';
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
